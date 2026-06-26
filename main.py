@@ -71,6 +71,10 @@ class RejectDatasetRequest(BaseModel):
     reason: str
 
 
+class DatasetStatusUpdateRequest(BaseModel):
+    status: str
+
+
 class StatusUpdateResponse(BaseModel):
     id: str
     status: str
@@ -345,6 +349,22 @@ async def accept_dataset(dataset_id: str, auth: dict = Depends(verify_api_key)):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Dataset does not belong to your organization")
     supabase.table("dataset").update({"status": "accepted"}).eq("id", dataset_id).execute()
     return StatusUpdateResponse(id=dataset_id, status="accepted", message="Dataset accepted successfully")
+
+
+@app.patch("/datasets/{dataset_id}/status", response_model=StatusUpdateResponse)
+async def update_dataset_status(dataset_id: str, request: DatasetStatusUpdateRequest, auth: dict = Depends(verify_api_key)):
+    allowed_statuses = {"accepted", "pending", "rejected"}
+    if request.status not in allowed_statuses:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported dataset status")
+
+    dataset = _one("dataset", "id", dataset_id)
+    if dataset is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found")
+    if dataset["organization_id"] != auth["organization_id"]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Dataset does not belong to your organization")
+
+    supabase.table("dataset").update({"status": request.status}).eq("id", dataset_id).execute()
+    return StatusUpdateResponse(id=dataset_id, status=request.status, message=f"Dataset status updated to {request.status}")
 
 
 @app.post("/datasets/{dataset_id}/reject", response_model=StatusUpdateResponse)
